@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/penggy/EasyGoLib/utils"
 )
 
 type UDPServer struct {
@@ -101,7 +99,7 @@ func (s *UDPServer) SetupAudio() (err error) {
 	if s.AConn, err = net.ListenUDP("udp", addr); err != nil {
 		return
 	}
-	networkBuffer := utils.Conf().Section("rtsp").Key("network_buffer").MustInt(1048576)
+	networkBuffer := 1048576
 	if err = s.AConn.SetReadBuffer(networkBuffer); err != nil {
 		logger.Printf("udp server audio conn set read buffer error, %v", err)
 	}
@@ -197,7 +195,7 @@ func (s *UDPServer) SetupVideo() (err error) {
 	if err != nil {
 		return
 	}
-	networkBuffer := utils.Conf().Section("rtsp").Key("network_buffer").MustInt(1048576)
+	networkBuffer := 1048576
 	if err = s.VConn.SetReadBuffer(networkBuffer); err != nil {
 		logger.Printf("udp server video conn set read buffer error, %v", err)
 	}

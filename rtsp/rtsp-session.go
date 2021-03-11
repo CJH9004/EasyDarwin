@@ -3,7 +3,6 @@ package rtsp
 import (
 	"bufio"
 	"bytes"
-	"crypto/md5"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -16,10 +15,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/EasyDarwin/EasyDarwin/models"
-	"github.com/penggy/EasyGoLib/db"
-	"github.com/penggy/EasyGoLib/utils"
 
 	"github.com/teris-io/shortid"
 )
@@ -138,19 +133,19 @@ func (session *Session) String() string {
 }
 
 func NewSession(server *Server, conn net.Conn) *Session {
-	networkBuffer := utils.Conf().Section("rtsp").Key("network_buffer").MustInt(204800)
-	timeoutMillis := utils.Conf().Section("rtsp").Key("timeout").MustInt(0)
+	networkBuffer := 204800
+	timeoutMillis := 0
 	timeoutTCPConn := &RichConn{conn, time.Duration(timeoutMillis) * time.Millisecond}
-	authorizationEnable := utils.Conf().Section("rtsp").Key("authorization_enable").MustInt(0)
-	close_old := utils.Conf().Section("rtsp").Key("close_old").MustInt(0)
-	debugLogEnable := utils.Conf().Section("rtsp").Key("debug_log_enable").MustInt(0)
+	authorizationEnable := 0
+	close_old := 0
+	debugLogEnable := 0
 	session := &Session{
 		ID:                  shortid.MustGenerate(),
 		Server:              server,
 		Conn:                timeoutTCPConn,
 		connRW:              bufio.NewReadWriter(bufio.NewReaderSize(timeoutTCPConn, networkBuffer), bufio.NewWriterSize(timeoutTCPConn, networkBuffer)),
 		StartAt:             time.Now(),
-		Timeout:             utils.Conf().Section("rtsp").Key("timeout").MustInt(0),
+		Timeout:             0,
 		authorizationEnable: authorizationEnable != 0,
 		debugLogEnable:      debugLogEnable != 0,
 		RTPHandles:          make([]func(*RTPPack), 0),
@@ -163,9 +158,6 @@ func NewSession(server *Server, conn net.Conn) *Session {
 	}
 
 	session.logger = log.New(os.Stdout, fmt.Sprintf("[%s]", session.ID), log.LstdFlags|log.Lshortfile)
-	if !utils.Debug {
-		session.logger.SetOutput(utils.GetLogWriter())
-	}
 	return session
 }
 
@@ -296,68 +288,6 @@ func (session *Session) Start() {
 	}
 }
 
-func CheckAuth(authLine string, method string, sessionNonce string) error {
-	realmRex := regexp.MustCompile(`realm="(.*?)"`)
-	nonceRex := regexp.MustCompile(`nonce="(.*?)"`)
-	usernameRex := regexp.MustCompile(`username="(.*?)"`)
-	responseRex := regexp.MustCompile(`response="(.*?)"`)
-	uriRex := regexp.MustCompile(`uri="(.*?)"`)
-
-	realm := ""
-	nonce := ""
-	username := ""
-	response := ""
-	uri := ""
-	result1 := realmRex.FindStringSubmatch(authLine)
-	if len(result1) == 2 {
-		realm = result1[1]
-	} else {
-		return fmt.Errorf("CheckAuth error : no realm found")
-	}
-	result1 = nonceRex.FindStringSubmatch(authLine)
-	if len(result1) == 2 {
-		nonce = result1[1]
-	} else {
-		return fmt.Errorf("CheckAuth error : no nonce found")
-	}
-	if sessionNonce != nonce {
-		return fmt.Errorf("CheckAuth error : sessionNonce not same as nonce")
-	}
-
-	result1 = usernameRex.FindStringSubmatch(authLine)
-	if len(result1) == 2 {
-		username = result1[1]
-	} else {
-		return fmt.Errorf("CheckAuth error : username not found")
-	}
-
-	result1 = responseRex.FindStringSubmatch(authLine)
-	if len(result1) == 2 {
-		response = result1[1]
-	} else {
-		return fmt.Errorf("CheckAuth error : response not found")
-	}
-
-	result1 = uriRex.FindStringSubmatch(authLine)
-	if len(result1) == 2 {
-		uri = result1[1]
-	} else {
-		return fmt.Errorf("CheckAuth error : uri not found")
-	}
-	var user models.User
-	err := db.SQLite.Where("Username = ?", username).First(&user).Error
-	if err != nil {
-		return fmt.Errorf("CheckAuth error : user not exists")
-	}
-	md5UserRealmPwd := fmt.Sprintf("%x", md5.Sum([]byte(fmt.Sprintf("%s:%s:%s", username, realm, user.Password))))
-	md5MethodURL := fmt.Sprintf("%x", md5.Sum([]byte(fmt.Sprintf("%s:%s", method, uri))))
-	myResponse := fmt.Sprintf("%x", md5.Sum([]byte(fmt.Sprintf("%s:%s:%s", md5UserRealmPwd, nonce, md5MethodURL))))
-	if myResponse != response {
-		return fmt.Errorf("CheckAuth error : response not equal")
-	}
-	return nil
-}
-
 func (session *Session) handleRequest(req *Request) {
 	//if session.Timeout > 0 {
 	//	session.Conn.SetDeadline(time.Now().Add(time.Duration(session.Timeout) * time.Second))
@@ -402,26 +332,6 @@ func (session *Session) handleRequest(req *Request) {
 		}
 	}()
 	if req.Method != "OPTIONS" {
-		if session.authorizationEnable {
-			authLine := req.Header["Authorization"]
-			authFailed := true
-			if authLine != "" {
-				err := CheckAuth(authLine, req.Method, session.nonce)
-				if err == nil {
-					authFailed = false
-				} else {
-					logger.Printf("%v", err)
-				}
-			}
-			if authFailed {
-				res.StatusCode = 401
-				res.Status = "Unauthorized"
-				nonce := fmt.Sprintf("%x", md5.Sum([]byte(shortid.MustGenerate())))
-				session.nonce = nonce
-				res.Header["WWW-Authenticate"] = fmt.Sprintf(`Digest realm="EasyDarwin", nonce="%s", algorithm="MD5"`, nonce)
-				return
-			}
-		}
 	}
 	switch req.Method {
 	case "OPTIONS":
@@ -520,6 +430,7 @@ func (session *Session) handleRequest(req *Request) {
 		res.SetBody(session.Pusher.SDPRaw())
 	case "SETUP":
 		ts := req.Header["Transport"]
+		fmt.Println("*************************", ts)
 		// control字段可能是`stream=1`字样，也可能是rtsp://...字样。即control可能是url的path，也可能是整个url
 		// 例1：
 		// a=control:streamid=1

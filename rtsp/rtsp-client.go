@@ -18,8 +18,6 @@ import (
 
 	"github.com/teris-io/shortid"
 
-	"github.com/penggy/EasyGoLib/utils"
-
 	"github.com/pixelbender/go-sdp/sdp"
 )
 
@@ -74,7 +72,7 @@ func NewRTSPClient(server *Server, rawUrl string, sendOptionMillis int64, agent 
 	if err != nil {
 		return
 	}
-	debugLogEnable := utils.Conf().Section("rtsp").Key("debug_log_enable").MustInt(0)
+	debugLogEnable := 0
 	client = &RTSPClient{
 		Server:               server,
 		Stoped:               false,
@@ -92,9 +90,6 @@ func NewRTSPClient(server *Server, rawUrl string, sendOptionMillis int64, agent 
 		debugLogEnable:       debugLogEnable != 0,
 	}
 	client.logger = log.New(os.Stdout, fmt.Sprintf("[%s]", client.ID), log.LstdFlags|log.Lshortfile)
-	if !utils.Debug {
-		client.logger.SetOutput(utils.GetLogWriter())
-	}
 	return
 }
 
@@ -203,7 +198,7 @@ func (client *RTSPClient) requestStream(timeout time.Duration) (err error) {
 		return err
 	}
 
-	networkBuffer := utils.Conf().Section("rtsp").Key("network_buffer").MustInt(204800)
+	networkBuffer := 204800
 
 	timeoutConn := RichConn{
 		conn,
@@ -267,7 +262,7 @@ func (client *RTSPClient) requestStream(timeout time.Duration) (err error) {
 		switch media.Type {
 		case "video":
 			client.VControl = media.Attributes.Get("control")
-			client.VCodec = media.Formats[0].Name
+			client.VCodec = media.Format[0].Name
 			var _url = ""
 			if strings.Index(strings.ToLower(client.VControl), "rtsp://") == 0 {
 				_url = client.VControl
@@ -301,7 +296,7 @@ func (client *RTSPClient) requestStream(timeout time.Duration) (err error) {
 			session, _ = resp.Header["Session"].(string)
 		case "audio":
 			client.AControl = media.Attributes.Get("control")
-			client.ACodec = media.Formats[0].Name
+			client.ACodec = media.Format[0].Name
 			var _url = ""
 			if strings.Index(strings.ToLower(client.AControl), "rtsp://") == 0 {
 				_url = client.AControl
@@ -491,7 +486,7 @@ func (client *RTSPClient) startStream() {
 
 func (client *RTSPClient) Start(timeout time.Duration) (err error) {
 	if timeout == 0 {
-		timeoutMillis := utils.Conf().Section("rtsp").Key("timeout").MustInt(0)
+		timeoutMillis := 0
 		timeout = time.Duration(timeoutMillis) * time.Millisecond
 	}
 	err = client.requestStream(timeout)

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-
-	"github.com/penggy/EasyGoLib/utils"
 )
 
 type UDPClient struct {
@@ -66,7 +64,7 @@ func (c *UDPClient) SetupAudio() (err error) {
 	if err != nil {
 		return
 	}
-	networkBuffer := utils.Conf().Section("rtsp").Key("network_buffer").MustInt(1048576)
+	networkBuffer := 1048576
 	if err = c.AConn.SetReadBuffer(networkBuffer); err != nil {
 		logger.Printf("udp client audio conn set read buffer error, %v", err)
 	}
@@ -110,7 +108,7 @@ func (c *UDPClient) SetupVideo() (err error) {
 	if c.VConn, err = net.DialUDP("udp", nil, addr); err != nil {
 		return
 	}
-	networkBuffer := utils.Conf().Section("rtsp").Key("network_buffer").MustInt(1048576)
+	networkBuffer := 1048576
 	if err = c.VConn.SetReadBuffer(networkBuffer); err != nil {
 		logger.Printf("udp client video conn set read buffer error, %v", err)
 	}
