@@ -1,0 +1,1 @@
+GOOS=linux GOARCH=arm go build -tags release -ldflags "-s -w" -o rtsp-server main.go
